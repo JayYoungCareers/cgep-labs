@@ -1,0 +1,24 @@
+# Checkov policy configuration.
+#
+# Every skip below is a documented, justified exception — the compliance-as-code
+# equivalent of a risk acceptance. Remove the skip when the roadmap item lands.
+directory:
+  - terraform
+quiet: true
+compact: true
+skip-check:
+  # The vault's protection model is Object Lock (WORM) + versioning + default
+  # retention; lifecycle rules would fight the retention design.
+  - CKV2_AWS_61
+  # Event notifications are not part of the evidence pipeline (receipts are
+  # emitted by the capture script, not by S3 events). Roadmap candidate.
+  - CKV2_AWS_62
+  # Cross-region replication of the vault is out of scope for the lab;
+  # a production evidence vault would replicate to a second locked bucket.
+  - CKV_AWS_144
+  # AES-256 (SSE-S3) is the documented lab choice; COMPLIANCE-mode production
+  # guidance in the README covers the KMS upgrade path.
+  - CKV_AWS_145
+  # Access logging on the vault itself is a roadmap item; the vault IS the
+  # audit-log store in this design.
+  - CKV_AWS_18

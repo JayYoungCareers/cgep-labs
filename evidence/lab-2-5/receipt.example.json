@@ -1,0 +1,7 @@
+{
+  "run_id": "test-001",
+  "vault": "cgep-lab-grc-evidence-vault-XXXXXXXX",
+  "key": "runs/test-001/bundle.tar.gz",
+  "version_id": "REPLACE-with-base64-VersionId-from-put-object",
+  "captured_at_utc": "2026-08-15T00:00:00Z"
+}

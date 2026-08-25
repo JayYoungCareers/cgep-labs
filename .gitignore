@@ -1,0 +1,45 @@
+# --- Terraform ---
+# Local .terraform directories (provider plugins, modules)
+**/.terraform/*
+
+# State files may contain secrets; evidence goes to the vault, not git.
+*.tfstate
+*.tfstate.*
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Local plan output (kept out of git; captured into the vault bundle instead)
+tfplan
+*.tfplan
+
+# Override files (local-only)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI config
+.terraformrc
+terraform.rc
+
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored — commit it.
+
+# --- Evidence artifacts ---
+# The local tarball is large; its durable copy lives in the S3 Object Lock vault.
+bundle-*.tar.gz
+
+# Ignore stray signature bundles anywhere in the tree, but KEEP the ones recorded
+# under evidence/ — those are portfolio evidence and must be tracked in git.
+*.sig.bundle
+!evidence/**/*.sig.bundle
+
+# --- Local staging (not part of the project) ---
+# Stale files parked for manual deletion; never publish these.
+_to_delete/
+
+# --- OS / editor cruft ---
+desktop.ini
+Thumbs.db
+.DS_Store

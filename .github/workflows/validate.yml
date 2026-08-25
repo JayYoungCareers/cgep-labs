@@ -1,0 +1,68 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: this workflow only reads the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_DIR: terraform/primitives/evidence-vault
+
+jobs:
+  terraform:
+    name: fmt / validate / tflint / checkov
+    runs-on: ubuntu-latest
+    steps:
+      # Actions pinned to full commit SHAs (supply-chain hardening).
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.9.8"
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive terraform/
+
+      - name: terraform validate
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: tflint
+        run: |
+          curl -sSL -o /tmp/tflint.zip \
+            https://github.com/terraform-linters/tflint/releases/download/v0.59.1/tflint_linux_amd64.zip
+          unzip -o -q /tmp/tflint.zip -d /tmp
+          /tmp/tflint --chdir "$TF_DIR"
+
+      - name: checkov (policy scan with documented skips)
+        run: |
+          pipx install checkov==3.3.11
+          checkov --config-file .checkov.yaml
+
+  shell:
+    name: shellcheck + verifier tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # -S warning: fail on warnings and errors; informational notes
+      # (e.g. SC2015 on the deliberate `&& ... || true` capture tolerance)
+      # are reported but non-fatal.
+      - name: shellcheck
+        run: shellcheck -S warning scripts/*.sh tests/*.sh
+
+      # Proves the verifier rejects tampering rather than always saying yes:
+      # intact bundle passes; altered, truncated, injected and manifest-less
+      # bundles must all be refused.
+      - name: verifier test suite
+        run: bash tests/test-verify-evidence.sh
