@@ -28,7 +28,7 @@ cgep-labs/
 - **Lab 2.3 — NIST 800-53 Controls as Terraform Resources**: encodes specific NIST 800-53 controls directly into a Terraform S3 bucket resource. See `terraform/primitives/compliant-s3/README.md`.
 - **Lab 2.4 — Terraform Modules for Compliance**: extracts a compliant GCS bucket into a reusable module, with dev/prod/negative-test consumers proving the guardrails hold. See `terraform/modules/compliant-gcs-bucket/README.md`.
 - **Lab 2.5 — IaC as Compliance Evidence**: an S3 Object Lock evidence vault and capture pipeline that turns Terraform runs into tamper-evident, cryptographically signed audit evidence. See `terraform/primitives/evidence-vault/README.md` and `scripts/RUNBOOK.md`.
-- **Writing Compliance Policies in Rego**: Rego policies (with tests) that check Terraform plans against the same control set programmatically. See `policies/`.
+- **Lab 3.3 - Writing Compliance Policies in Rego**: Rego policies (with tests) that check Terraform plans against the same control set programmatically. See `policies/`.
 
 ## CI
 
