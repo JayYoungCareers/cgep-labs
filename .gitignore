@@ -43,3 +43,6 @@ _to_delete/
 desktop.ini
 Thumbs.db
 .DS_Store
+
+# Generated Terraform plan JSON (produced on demand by policy-gate.sh; never committed)
+plan.json

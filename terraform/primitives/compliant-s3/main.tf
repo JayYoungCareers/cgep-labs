@@ -77,6 +77,13 @@ resource "aws_s3_bucket_public_access_block" "primary" {
   restrict_public_buckets = true
 }
 
+resource "aws_s3_bucket_versioning" "log" {
+  bucket = aws_s3_bucket.log.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # AU-3 / AU-6: Content of audit records + audit review.
 resource "aws_s3_bucket" "log" {
   bucket = local.log_name

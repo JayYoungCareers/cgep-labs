@@ -6,19 +6,26 @@ directory:
   - terraform
 quiet: true
 compact: true
+skip-path:
+  # policy-fixture is a DELIBERATELY non-compliant test bed for the Rego policies
+  # (Labs 3.3/3.4). It is never deployed — its violations are the whole point.
+  - terraform/primitives/policy-fixture
 skip-check:
-  # The vault's protection model is Object Lock (WORM) + versioning + default
-  # retention; lifecycle rules would fight the retention design.
+  # Vault protection is Object Lock (WORM) + versioning + default retention;
+  # lifecycle rules would fight the retention design.
   - CKV2_AWS_61
-  # Event notifications are not part of the evidence pipeline (receipts are
-  # emitted by the capture script, not by S3 events). Roadmap candidate.
+  # Event notifications aren't part of the evidence pipeline (receipts come from
+  # the capture script, not S3 events). Roadmap candidate.
   - CKV2_AWS_62
-  # Cross-region replication of the vault is out of scope for the lab;
-  # a production evidence vault would replicate to a second locked bucket.
+  # Cross-region replication of the vault is out of scope for the lab.
   - CKV_AWS_144
-  # AES-256 (SSE-S3) is the documented lab choice; COMPLIANCE-mode production
-  # guidance in the README covers the KMS upgrade path.
+  # AES-256 (SSE-S3) is the documented lab choice; README covers the KMS path.
   - CKV_AWS_145
-  # Access logging on the vault itself is a roadmap item; the vault IS the
-  # audit-log store in this design.
+  # Access logging on the vault itself is a roadmap item; the vault IS the store.
   - CKV_AWS_18
+  # The access-log bucket uses ACL-based log delivery (log-delivery-write), so
+  # ACLs can't be disabled on it — required by the S3 logging design.
+  - CKV2_AWS_65
+  # Access logging on the compliant-gcs-bucket module is a roadmap item (same
+  # posture as the vault's CKV_AWS_18); the primary buckets already log.
+  - CKV_GCP_62
