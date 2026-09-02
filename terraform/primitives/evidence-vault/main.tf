@@ -27,12 +27,12 @@ locals {
 
 resource "aws_s3_bucket" "vault" {
   bucket              = local.vault_name
-  object_lock_enabled = true        # MUST be set at bucket creation
+  object_lock_enabled = true # MUST be set at bucket creation
 }
 
 resource "aws_s3_bucket_versioning" "vault" {
   bucket = aws_s3_bucket.vault.id
-  versioning_configuration { status = "Enabled" }   # Object Lock requires versioning
+  versioning_configuration { status = "Enabled" } # Object Lock requires versioning
 }
 
 resource "aws_s3_bucket_object_lock_configuration" "vault" {
@@ -40,7 +40,7 @@ resource "aws_s3_bucket_object_lock_configuration" "vault" {
 
   rule {
     default_retention {
-      mode = var.lock_mode           # GOVERNANCE for labs, COMPLIANCE for production
+      mode = var.lock_mode # GOVERNANCE for labs, COMPLIANCE for production
       days = var.retention_days
     }
   }
