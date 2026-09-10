@@ -42,10 +42,25 @@ resource "aws_s3_bucket" "primary" {
 # key rotation, access, and revocation, the stronger reading of SC-28 that a
 # customer-managed-key scanner (tfsec aws-s3-encryption-customer-key) expects.
 
+data "aws_caller_identity" "current" {}
+
 resource "aws_kms_key" "primary" {
   description             = "CMK for the compliant-s3 primary data bucket (SC-28)"
   deletion_window_in_days = 7
   enable_key_rotation     = true
+
+  # AC-3: an explicit key policy. Root delegates key access to IAM, so who may
+  # use this key is governed by reviewable IAM policy, not an implicit default.
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "EnableRootAccountAdmin"
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+      Action    = "kms:*"
+      Resource  = "*"
+    }]
+  })
 }
 
 resource "aws_kms_alias" "primary" {
