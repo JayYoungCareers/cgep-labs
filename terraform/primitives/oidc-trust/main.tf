@@ -8,8 +8,10 @@ terraform {
 
 provider "aws" { region = "us-east-1" }
 
-variable "github_org"  { type = string }
-variable "github_repo" { type = string }
+variable "github_org"     { type = string }
+variable "github_repo"    { type = string }
+variable "github_org_id"  { type = string } # numeric account/org ID (immutable subject claims)
+variable "github_repo_id" { type = string } # numeric repo ID (immutable subject claims)
 
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
@@ -28,7 +30,12 @@ resource "aws_iam_role" "grc_gate" {
       Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = { "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com" }
-        StringLike   = { "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_repo}:*" }
+        # GitHub immutable subject claims embed numeric org/repo IDs in the sub:
+        #   repo:<org>@<org_id>/<repo>@<repo_id>:<context>
+        # Matching the exact prefix keeps trust scoped to THIS repo and no other.
+        StringLike = {
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}@${var.github_org_id}/${var.github_repo}@${var.github_repo_id}:*"
+        }
       }
     }]
   })
