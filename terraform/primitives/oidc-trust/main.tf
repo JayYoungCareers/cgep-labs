@@ -8,9 +8,9 @@ terraform {
 
 provider "aws" { region = "us-east-1" }
 
-variable "github_org"     { type = string }
-variable "github_repo"    { type = string }
-variable "github_org_id"  { type = string } # numeric account/org ID (immutable subject claims)
+variable "github_org" { type = string }
+variable "github_repo" { type = string }
+variable "github_org_id" { type = string }  # numeric account/org ID (immutable subject claims)
 variable "github_repo_id" { type = string } # numeric repo ID (immutable subject claims)
 
 resource "aws_iam_openid_connect_provider" "github" {

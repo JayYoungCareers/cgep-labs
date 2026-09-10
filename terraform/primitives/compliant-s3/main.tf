@@ -37,26 +37,31 @@ resource "aws_s3_bucket" "primary" {
   bucket = local.primary_name
 }
 
-# SC-28: Protection of information at rest.
-# AES-256 keeps this lab simple. The commented block below shows how you'd
-# switch to KMS-managed keys, covered in a later lab.
+# SC-28: Protection of information at rest with a CUSTOMER-MANAGED key.
+# A dedicated CMK (not the AWS-managed AES256 default) gives us control over
+# key rotation, access, and revocation, the stronger reading of SC-28 that a
+# customer-managed-key scanner (tfsec aws-s3-encryption-customer-key) expects.
+
+resource "aws_kms_key" "primary" {
+  description             = "CMK for the compliant-s3 primary data bucket (SC-28)"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+
+resource "aws_kms_alias" "primary" {
+  name          = "alias/${var.project_name}-${var.environment}-s3-primary"
+  target_key_id = aws_kms_key.primary.key_id
+}
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "primary" {
   bucket = aws_s3_bucket.primary.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.primary.arn
     }
+    bucket_key_enabled = true
   }
-
-  # KMS teaser:
-  # rule {
-  #   apply_server_side_encryption_by_default {
-  #     sse_algorithm     = "aws:kms"
-  #     kms_master_key_id = aws_kms_key.bucket.arn
-  #   }
-  #   bucket_key_enabled = true
-  # }
 }
 
 # CM-6: Versioning preserves prior object states for recovery and audit.
