@@ -92,13 +92,57 @@ jobs:
       - name: opa test — GCP policy unit tests
         run: opa test -v policies/
 
-      # POSITIVE: the committed compliant-s3 plan must clear all three AWS
-      # controls. A gate that denies everything is not a gate.
+      # POSITIVE: a compliant bucket must clear all three AWS controls.
+      # A gate that denies everything is not a gate. Built inline rather than
+      # read from evidence/lab-2-3/plan.json, which predates the CM-6 tag
+      # rename and still carries the old lowercase keys (see PR notes).
       - name: conftest — compliant plan must pass
         run: |
+          mkdir -p /tmp/positive
+          cat > /tmp/positive/plan.json <<'JSON'
+          {
+            "format_version": "1.2",
+            "configuration": {
+              "root_module": {
+                "resources": [
+                  { "address": "aws_s3_bucket.compliant",
+                    "type": "aws_s3_bucket",
+                    "name": "compliant",
+                    "expressions": { "bucket": { "constant_value": "compliant-bucket" } } },
+                  { "address": "aws_s3_bucket_server_side_encryption_configuration.compliant",
+                    "type": "aws_s3_bucket_server_side_encryption_configuration",
+                    "name": "compliant",
+                    "expressions": { "bucket": { "references": ["aws_s3_bucket.compliant.id", "aws_s3_bucket.compliant"] } } },
+                  { "address": "aws_s3_bucket_public_access_block.compliant",
+                    "type": "aws_s3_bucket_public_access_block",
+                    "name": "compliant",
+                    "expressions": { "bucket": { "references": ["aws_s3_bucket.compliant.id", "aws_s3_bucket.compliant"] } } }
+                ]
+              }
+            },
+            "planned_values": {
+              "root_module": {
+                "resources": [
+                  { "address": "aws_s3_bucket.compliant",
+                    "type": "aws_s3_bucket",
+                    "name": "compliant",
+                    "values": { "bucket": "compliant-bucket",
+                                "tags_all": { "Project": "cgep-lab", "Environment": "dev",
+                                              "ManagedBy": "terraform", "ComplianceScope": "cgep-lab" } } },
+                  { "address": "aws_s3_bucket_public_access_block.compliant",
+                    "type": "aws_s3_bucket_public_access_block",
+                    "name": "compliant",
+                    "values": { "block_public_acls": true, "block_public_policy": true,
+                                "ignore_public_acls": true, "restrict_public_buckets": true } }
+                ]
+              }
+            }
+          }
+          JSON
+
           for ns in compliance.sc28_aws compliance.ac3_aws compliance.cm6_aws; do
             echo "::group::$ns"
-            conftest test --policy policies/ --namespace "$ns" evidence/lab-2-3/plan.json
+            conftest test --policy policies/ --namespace "$ns" /tmp/positive/plan.json
             echo "::endgroup::"
           done
 
