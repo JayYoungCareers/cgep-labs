@@ -43,6 +43,11 @@ jobs:
           curl -fsSL https://github.com/aquasecurity/tfsec/releases/download/v1.28.14/tfsec-linux-amd64 \
             -o /usr/local/bin/tfsec && chmod +x /usr/local/bin/tfsec
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.2.4'
+
       - name: Terraform plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
@@ -92,10 +97,83 @@ jobs:
           cp "$TF_WORKING_DIR"/plan.json evidence/lab-4-3/plan.json
           cp "$TF_WORKING_DIR"/plan.txt  evidence/lab-4-3/plan.txt
 
+      - name: Bundle + sign + upload to vault
+        id: sign
+        if: always()
+        env:
+          VAULT: ${{ vars.EVIDENCE_VAULT }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if command -v sha256sum >/dev/null 2>&1; then SHASUM="sha256sum"
+          elif command -v shasum >/dev/null 2>&1; then SHASUM="shasum -a 256"
+          else echo "Need sha256sum or shasum" >&2; exit 2; fi
+
+          CAPTURED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          BDIR="evidence/lab-4-3"
+
+          # Build manifest.json the same way scripts/capture-evidence.sh does (Lab
+          # 2.5), so scripts/verify-evidence.sh's per-file check works unmodified
+          # against this bundle too.
+          {
+            echo "["
+            FIRST=1
+            for f in "$BDIR"/*; do
+              base=$(basename "$f")
+              [[ "$base" == "manifest.json" ]] && continue
+              HASH=$($SHASUM "$f" | awk '{print $1}')
+              SIZE=$(wc -c < "$f" | tr -d ' ')
+              [[ $FIRST -eq 1 ]] && FIRST=0 || printf ","
+              printf '\n  {"filename":"%s","sha256":"%s","size":%s,"captured_at_utc":"%s"}' \
+                "$base" "$HASH" "$SIZE" "$CAPTURED_AT"
+            done
+            echo
+            echo "]"
+          } > "$BDIR/manifest.json"
+
+          BUNDLE="bundle.tar.gz"
+          ( cd "$BDIR" && tar czf "../../${BUNDLE}" . )
+          $SHASUM "${BUNDLE}" | awk '{print $1}' > "${BUNDLE}.sha256"
+
+          cosign sign-blob --yes --bundle "${BUNDLE}.sig.bundle" "${BUNDLE}"
+
+          # Same key convention as capture-evidence.sh: runs/<run_id>/bundle.tar.gz
+          KEY="runs/${RUN_ID}/${BUNDLE}"
+          UPLOAD_OUT=$(aws s3api put-object --bucket "${VAULT}" --key "${KEY}" --body "${BUNDLE}" --output json)
+          VERSION_ID=$(echo "$UPLOAD_OUT" | jq -r '.VersionId')
+
+          aws s3 cp "${BUNDLE}.sha256"     "s3://${VAULT}/${KEY}.sha256"
+          aws s3 cp "${BUNDLE}.sig.bundle" "s3://${VAULT}/${KEY}.sig.bundle"
+
+          # Field names (run_id/vault/key/version_id) match what
+          # scripts/verify-evidence.sh already expects from Lab 2.5's receipts.
+          cat > receipt.json <<EOF
+          {
+            "run_id":"${RUN_ID}",
+            "vault":"${VAULT}",
+            "key":"${KEY}",
+            "version_id":"${VERSION_ID}",
+            "captured_at_utc":"${CAPTURED_AT}",
+            "commit":"${SHA}"
+          }
+          EOF
+          aws s3 cp receipt.json "s3://${VAULT}/runs/${RUN_ID}/receipt.json"
+          mkdir -p evidence/lab-4-4
+          cp receipt.json evidence/lab-4-4/receipt.json
+
       - name: Upload evidence artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: grc-evidence-${{ github.run_id }}
-          path: evidence/lab-4-3/
+          path: |
+            evidence/lab-4-3/
+            evidence/lab-4-4/
           retention-days: 90
+
+      - name: Enforce gate
+        if: always()
+        run: |
+          test "${{ steps.conftest.outcome }}" = "success" \
+            && test "${{ steps.tfsec.outcome }}" = "success"
