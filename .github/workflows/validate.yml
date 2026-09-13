@@ -66,3 +66,128 @@ jobs:
       # bundles must all be refused.
       - name: verifier test suite
         run: bash tests/test-verify-evidence.sh
+
+  policy:
+    name: opa tests + conftest gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: install opa
+        run: |
+          curl -sSL -o /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/v0.68.0/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+          opa version
+
+      - name: install conftest
+        run: |
+          curl -sSL -o /tmp/conftest.tar.gz \
+            https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz
+          tar -xzf /tmp/conftest.tar.gz -C /tmp conftest
+          install -m 0755 /tmp/conftest /usr/local/bin/conftest
+          conftest --version
+
+      # SC-28 / AC-3 / CM-6 unit tests for the GCP policies (pass and fail cases).
+      - name: opa test — GCP policy unit tests
+        run: opa test -v policies/
+
+      # POSITIVE: a compliant bucket must clear all three AWS controls.
+      # A gate that denies everything is not a gate. Built inline rather than
+      # read from evidence/lab-2-3/plan.json, which predates the CM-6 tag
+      # rename and still carries the old lowercase keys (see PR notes).
+      - name: conftest — compliant plan must pass
+        run: |
+          mkdir -p /tmp/positive
+          cat > /tmp/positive/plan.json <<'JSON'
+          {
+            "format_version": "1.2",
+            "configuration": {
+              "root_module": {
+                "resources": [
+                  { "address": "aws_s3_bucket.compliant",
+                    "type": "aws_s3_bucket",
+                    "name": "compliant",
+                    "expressions": { "bucket": { "constant_value": "compliant-bucket" } } },
+                  { "address": "aws_s3_bucket_server_side_encryption_configuration.compliant",
+                    "type": "aws_s3_bucket_server_side_encryption_configuration",
+                    "name": "compliant",
+                    "expressions": { "bucket": { "references": ["aws_s3_bucket.compliant.id", "aws_s3_bucket.compliant"] } } },
+                  { "address": "aws_s3_bucket_public_access_block.compliant",
+                    "type": "aws_s3_bucket_public_access_block",
+                    "name": "compliant",
+                    "expressions": { "bucket": { "references": ["aws_s3_bucket.compliant.id", "aws_s3_bucket.compliant"] } } }
+                ]
+              }
+            },
+            "planned_values": {
+              "root_module": {
+                "resources": [
+                  { "address": "aws_s3_bucket.compliant",
+                    "type": "aws_s3_bucket",
+                    "name": "compliant",
+                    "values": { "bucket": "compliant-bucket",
+                                "tags_all": { "Project": "cgep-lab", "Environment": "dev",
+                                              "ManagedBy": "terraform", "ComplianceScope": "cgep-lab" } } },
+                  { "address": "aws_s3_bucket_public_access_block.compliant",
+                    "type": "aws_s3_bucket_public_access_block",
+                    "name": "compliant",
+                    "values": { "block_public_acls": true, "block_public_policy": true,
+                                "ignore_public_acls": true, "restrict_public_buckets": true } }
+                ]
+              }
+            }
+          }
+          JSON
+
+          for ns in compliance.sc28_aws compliance.ac3_aws compliance.cm6_aws; do
+            echo "::group::$ns"
+            conftest test --policy policies/ --namespace "$ns" /tmp/positive/plan.json
+            echo "::endgroup::"
+          done
+
+      # NEGATIVE: a bucket with no public access block, no SSE, and no required
+      # tags must be denied by all three controls. Shape matches what the AWS
+      # policies read: configuration.root_module.resources for the resource
+      # graph, planned_values.root_module.resources for resolved values.
+      - name: conftest — violating plan must fail closed
+        run: |
+          mkdir -p /tmp/negative
+          cat > /tmp/negative/plan.json <<'JSON'
+          {
+            "format_version": "1.2",
+            "configuration": {
+              "root_module": {
+                "resources": [
+                  { "address": "aws_s3_bucket.violating",
+                    "type": "aws_s3_bucket",
+                    "name": "violating",
+                    "provider_config_key": "aws",
+                    "expressions": { "bucket": { "constant_value": "violating-bucket" } } }
+                ]
+              }
+            },
+            "planned_values": {
+              "root_module": {
+                "resources": [
+                  { "address": "aws_s3_bucket.violating",
+                    "type": "aws_s3_bucket",
+                    "name": "violating",
+                    "provider_name": "registry.terraform.io/hashicorp/aws",
+                    "values": { "bucket": "violating-bucket", "tags": {}, "tags_all": {} } }
+                ]
+              }
+            }
+          }
+          JSON
+
+          failed=0
+          for ns in compliance.sc28_aws compliance.ac3_aws compliance.cm6_aws; do
+            if conftest test --policy policies/ --namespace "$ns" /tmp/negative/plan.json; then
+              echo "::error::$ns ADMITTED a known-violating plan — fail-closed behavior is broken."
+              failed=1
+            else
+              echo "$ns correctly denied the violating plan."
+            fi
+          done
+          exit $failed
