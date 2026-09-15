@@ -10,7 +10,8 @@ cgep-labs/
 │   ├── primitives/                 # standalone units deployed directly
 │   │   ├── compliant-s3/           # Lab 2.3 — NIST 800-53 controls as a Terraform S3 primitive (AWS)
 │   │   ├── evidence-vault/         # Lab 2.5 — S3 Object Lock (WORM) vault for signed evidence bundles (AWS)
-│   │   └── policy-fixture/         # Lab 3.3 — plan-only, deliberately broken GCS/firewall test bed for the policies
+│   │   ├── policy-fixture/         # Lab 3.3 — plan-only, deliberately broken GCS/firewall test bed for the policies
+│   │   └── oidc-trust/             # Lab 4.3 — GitHub OIDC provider + read-only IAM role for the CI gate (AWS)
 │   ├── modules/                    # reusable modules
 │   │   └── compliant-gcs-bucket/   # Lab 2.4 — a compliant GCS bucket module (GCP)
 │   └── consumers/                  # example callers of the module above (dev / prod / negative-test)
@@ -26,25 +27,29 @@ cgep-labs/
 ├── scripts/
 │   ├── capture-evidence.sh         # Lab 2.5 — hash, bundle, and upload evidence to the vault
 │   ├── verify-evidence.sh          # Lab 2.5 — fetch by VersionId, re-hash, verdict
-│   ├── policy-gate.sh              # Lab 3.4 — the Conftest gate CI calls to block violating plans
-│   └── RUNBOOK.md                  # step-by-step guide to the evidence capture workflow
+│   └── policy-gate.sh              # Lab 3.4 — the Conftest gate CI calls to block violating plans
 ├── tests/                          # shell tests for the scripts above
 └── evidence/                       # captured proof, one folder per lab
     ├── lab-2-3/                    # plan.json / state.json for the compliant-s3 primitive
     ├── lab-2-4/                    # plan.json / compliance_attestation.json for the module lab
     ├── lab-2-5/                    # signed evidence bundle + receipts for the evidence-vault lab
     ├── lab-3-3/                    # opa-test-results.json — the Rego unit-test run
-    └── lab-3-4/                    # conftest-pass.json / conftest-fail.json — the gate, both directions
+    ├── lab-3-4/                    # conftest-pass.json / conftest-fail.json — the gate, both directions
+    └── lab-4-3/                    # plan.json / conftest-results.json / tfsec.sarif — one artifact per pipeline run
 ```
 
 ## Labs
 
 - **Lab 2.3 — NIST 800-53 Controls as Terraform Resources**: encodes specific NIST 800-53 controls directly into a Terraform S3 bucket resource. See `terraform/primitives/compliant-s3/README.md`.
 - **Lab 2.4 — Terraform Modules for Compliance**: extracts a compliant GCS bucket into a reusable module, with dev/prod/negative-test consumers proving the guardrails hold. See `terraform/modules/compliant-gcs-bucket/README.md`.
-- **Lab 2.5 — IaC as Compliance Evidence**: an S3 Object Lock evidence vault and capture pipeline that turns Terraform runs into tamper-evident, cryptographically signed audit evidence. See `terraform/primitives/evidence-vault/README.md` and `scripts/RUNBOOK.md`.
+- **Lab 2.5 — IaC as Compliance Evidence**: an S3 Object Lock evidence vault and capture pipeline that turns Terraform runs into tamper-evident, cryptographically signed audit evidence. See `terraform/primitives/evidence-vault/README.md`.
 - **Lab 3.3 — Writing Compliance Policies in Rego (GCP)**: three Rego policies — SC-28 (encryption at rest), AC-3 (no public access / no open management ports), and CM-6 (required labels) — that read a Terraform plan and add a control-tagged message to a `deny` set on any violation, each backed by passing *and* failing unit tests. Run with `opa test -v policies/`; a plan-only `policy-fixture` supplies the (non-)compliant infrastructure to check against. See `policies/` and `policies/README.md`.
 - **Lab 3.4 — Integrating PaC with Terraform via Conftest (AWS)**: AWS variants of the same three control IDs (`*_aws.rego`) — showing that a control is portable across clouds even when its implementation is not — wired into `scripts/policy-gate.sh`, a fail-closed gate that returns a non-zero exit code (and machine-readable evidence) on any violation. It's the exact script the capstone's CI pipeline calls. Evidence in `evidence/lab-3-4/`.
+- **Lab 4.3 — Building a GRC Evidence Pipeline (AWS + GitHub Actions)**: moves the Conftest gate off the laptop and onto GitHub's servers, where it runs on every pull request and cannot be skipped. It authenticates to AWS with short-lived OIDC tokens (no stored keys), plans the Terraform, runs the policy gate and a `tfsec` scan, and uploads a named evidence artifact on every run — including the runs it fails. `main` is branch-protected so a failing gate blocks the merge. See `terraform/primitives/oidc-trust/README.md` and `.github/workflows/grc-gate.yml`.
 
 ## CI
 
-`.github/workflows/validate.yml` runs `terraform fmt`, `validate`, `tflint`, and `checkov` (config in `.checkov.yaml`) over the Terraform, plus `shellcheck` and the evidence-verifier test suite — on every push and pull request.
+Two GitHub Actions workflows run on every push and pull request:
+
+- `.github/workflows/validate.yml` runs `terraform fmt`, `validate`, `tflint`, and `checkov` (config in `.checkov.yaml`) over the Terraform, plus `shellcheck` and the evidence-verifier test suite.
+- `.github/workflows/grc-gate.yml` (Lab 4.3) is the GRC evidence pipeline: it assumes a read-only AWS role via OIDC, plans the compliant-s3 workspace, runs the Conftest control gate and a `tfsec` scan, and attaches a per-run evidence artifact. `main` is branch-protected to require this check.
